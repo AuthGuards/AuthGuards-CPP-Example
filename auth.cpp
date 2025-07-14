@@ -1596,6 +1596,7 @@ namespace AUTH {
         }
         if (parts.size() > 5) { unlockHash = parts[5]; if (!silent) {} lastUnlockHash = unlockHash;
         }
+        if (parts.size() > 6) { lastLevel = parts[6]; }
 
         if (response.find(AuthGuards("UPDATE_AVAILABLE").decrypt()) != std::string::npos) {
             if (!silent) { Sleep(2000); exit(1);
@@ -1659,4 +1660,6 @@ namespace AUTH {
         }
     }
 
+    std::string AUTH::Api::lastLevel = "1";
+    std::string AUTH::Api::getLastLevel() { return lastLevel; }
 }
