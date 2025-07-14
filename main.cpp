@@ -44,6 +44,50 @@ int main() {
     std::string response = AUTH::Api::validateLicense(licenseKey);
     AUTH::Api::displayRemainingTime(response);
 
+    std::cout << AG(AuthGuards("Your license level: ").decrypt()) << AUTH::Api::getLastLevel() << std::endl;
+
+    /*std::string level = AUTH::Api::getLastLevel();
+    int userLevel = std::stoi(level);
+    std::cout << "Your License Level: " << userLevel << std::endl;
+    
+    int choice;
+    do {
+        if (userLevel == 1) {
+            std::cout << "\n[LEVEL 1 - BASIC MENU]" << std::endl;
+            std::cout << "0. Exit" << std::endl;
+        } else if (userLevel == 2) {
+            std::cout << "\n[LEVEL 2 - ADVANCED MENU]" << std::endl;
+            std::cout << "0. Exit" << std::endl;
+        } else if (userLevel == 3) {
+            std::cout << "\n[LEVEL 3 - PREMIUM MENU]" << std::endl;
+            std::cout << "0. Exit" << std::endl;
+        } else if (userLevel == 4) {
+            std::cout << "\n[LEVEL 4 - VIP MENU]" << std::endl;
+            std::cout << "0. Exit" << std::endl;
+        } else {
+            std::cout << "\n[UNKNOWN LEVEL MENU]" << std::endl;
+            std::cout << "0. Exit" << std::endl;
+        }
+        
+        std::cout << "\nEnter your choice: ";
+        std::cin >> choice;
+        
+        if (choice == 0) {
+            std::cout << "\nThank you for using AuthGuards!\n";
+            break;
+        } else if (choice >= 1 && choice <= 3) {
+            if (choice == userLevel) {
+                std::cout << "\nAccess granted to option " << choice << "!\n";
+                std::cout << "Feature is now available for use.\n";
+            } else {
+                std::cout << "\nAccess denied! Your level (" << userLevel << ") does not match this feature.\n";
+                std::cout << "You can only access feature level " << userLevel << ".\n";
+            }
+        } else {
+            std::cout << "\nInvalid choice. Please enter a valid option.\n";
+        }
+    } while (true);*/
+
     std::cout << AG(AuthGuards("Press Enter to exit...").decrypt());
     std::cin.get();
     CRYPTO_UTILS::StaticRSA::cleanup();
