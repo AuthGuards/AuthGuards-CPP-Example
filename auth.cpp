@@ -1597,6 +1597,12 @@ namespace AUTH {
         if (parts.size() > 5) { unlockHash = parts[5]; if (!silent) {} lastUnlockHash = unlockHash;
         }
         if (parts.size() > 6) { lastLevel = parts[6]; }
+        if (parts.size() > 7) userData.username = parts[7];
+        if (parts.size() > 8) userData.ip = parts[8];
+        if (parts.size() > 9) userData.hwid = parts[9];
+        if (parts.size() > 10) userData.createdate = parts[10];
+        if (parts.size() > 11) userData.lastlogin = parts[11];
+        if (parts.size() > 12) userData.subscriptions = parts[12];
 
         if (response.find(AuthGuards("UPDATE_AVAILABLE").decrypt()) != std::string::npos) {
             if (!silent) { Sleep(2000); exit(1);
@@ -1662,4 +1668,6 @@ namespace AUTH {
 
     std::string AUTH::Api::lastLevel = "1";
     std::string AUTH::Api::getLastLevel() { return lastLevel; }
+    AUTH::Api::UserData AUTH::Api::userData;
+    const AUTH::Api::UserData& AUTH::Api::getUserData() { return userData; }
 }
