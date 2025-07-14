@@ -94,6 +94,18 @@ namespace AUTH {
         static bool validateJWTWithServer(const std::string& jwtToken);
         static std::string decryptJWTToken(const std::string& encryptedToken);
         static std::string getInitialJWTToken();
+        static std::string lastLevel;
+        static std::string getLastLevel();
+        struct UserData {
+            std::string username;
+            std::string ip;
+            std::string hwid;
+            std::string createdate;
+            std::string lastlogin;
+            std::string subscriptions;
+        };
+        static UserData userData;
+        static const UserData& getUserData();
     };
 
 }
