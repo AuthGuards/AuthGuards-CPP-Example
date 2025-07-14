@@ -46,6 +46,17 @@ int main() {
 
     std::cout << AG(AuthGuards("Your license level: ").decrypt()) << AUTH::Api::getLastLevel() << std::endl;
 
+
+    const auto& userdata = AUTH::Api::getUserData();
+    std::cout << "\nUser Data:" << std::endl;
+    std::cout << "Username: " << userdata.username << std::endl;
+    std::cout << "IP: " << userdata.ip << std::endl;
+    std::cout << "HWID: " << userdata.hwid << std::endl;
+    std::cout << "Created: " << userdata.createdate << std::endl;
+    std::cout << "Last Login: " << userdata.lastlogin << std::endl;
+    std::cout << "Subscriptions: " << userdata.subscriptions << std::endl;
+
+    
     /*std::string level = AUTH::Api::getLastLevel();
     int userLevel = std::stoi(level);
     std::cout << "Your License Level: " << userLevel << std::endl;
