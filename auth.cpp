@@ -1603,7 +1603,7 @@ namespace AUTH {
         if (parts.size() > 10) userData.createdate = parts[10];
         if (parts.size() > 11) userData.lastlogin = parts[11];
         if (parts.size() > 12) userData.subscriptions = parts[12];
-
+        if (parts.size() > 2) userData.expiry = parts[2];
         if (response.find(AuthGuards("UPDATE_AVAILABLE").decrypt()) != std::string::npos) {
             if (!silent) { Sleep(2000); exit(1);
             }
