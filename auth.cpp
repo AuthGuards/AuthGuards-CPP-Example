@@ -6,7 +6,7 @@
 #include <sstream>
 #include <ctime>
 #include <chrono>
-#include <algorithm> 
+#include <algorithm>
 #include <memory>
 #include <iphlpapi.h>
 #include <intrin.h>
@@ -1660,6 +1660,8 @@ namespace AUTH {
         if (parts.size() > 10) userData.createdate = parts[10];
         if (parts.size() > 11) userData.lastlogin = parts[11];
         if (parts.size() > 12) userData.subscriptions = parts[12];
+        if (parts.size() > 13) userData.customerpanellink = parts[13];
+        if (parts.size() > 14) userData.usercount = parts[14];
         if (parts.size() > 2) userData.expiry = parts[2];
         if (!parts.empty()) {
             std::string status = parts[0];
@@ -1767,6 +1769,88 @@ namespace AUTH {
 AUTH::Api::UserData AUTH::Api::userData;
 const AUTH::Api::UserData& AUTH::Api::getUserData() { return userData; }
 
+bool AUTH::Api::checkblack() {
+    if (lastLicenseKey.empty()) {
+        return false;
+    }
+
+    std::stringstream urlstream;
+    urlstream << AUTH::API_URL << AuthGuards("?ag=checkblack").decrypt() << AuthGuards("&").decrypt() << AG(AuthGuards("projectID").decrypt()) << AuthGuards("=").decrypt() << NovACorE::ARE(AUTH::PROJECT_ID) << AuthGuards("&").decrypt() << AG(AuthGuards("key").decrypt()) << AuthGuards("=").decrypt() << NovACorE::ARE(lastLicenseKey);
+    std::string fullUrl = urlstream.str();
+    std::string finalUrl = fullUrl;
+    size_t queryPos = fullUrl.find(AuthGuards("?").decrypt());
+    if (queryPos != std::string::npos) {
+        std::string fullQueryString = fullUrl.substr(queryPos + 1);
+        std::string projectIDParam = AuthGuards("projectID=").decrypt();
+        size_t projectIDStart = fullQueryString.find(projectIDParam);
+        std::string projectID = AuthGuards("").decrypt();
+        std::string queryStringWithoutProjectID = fullQueryString;
+        if (projectIDStart != std::string::npos) {
+            size_t projectIDValueStart = projectIDStart + projectIDParam.length();
+            size_t projectIDEnd = fullQueryString.find(AuthGuards("&").decrypt(), projectIDValueStart);
+            if (projectIDEnd == std::string::npos) {
+                projectIDEnd = fullQueryString.length();
+            }
+            projectID = fullQueryString.substr(projectIDValueStart, projectIDEnd - projectIDValueStart);
+            std::string beforeProjectID = fullQueryString.substr(0, projectIDStart);
+            std::string afterProjectID = (projectIDEnd < fullQueryString.length()) ? fullQueryString.substr(projectIDEnd + 1) : AuthGuards("").decrypt();
+            if (!beforeProjectID.empty() && !afterProjectID.empty()) {
+                queryStringWithoutProjectID = beforeProjectID + AuthGuards("&").decrypt() + afterProjectID;
+            }
+            else if (!beforeProjectID.empty()) {
+                queryStringWithoutProjectID = beforeProjectID;
+            }
+            else if (!afterProjectID.empty()) {
+                queryStringWithoutProjectID = afterProjectID;
+            }
+            else {
+                queryStringWithoutProjectID = AuthGuards("").decrypt();
+            }
+            if (!queryStringWithoutProjectID.empty()) {
+                std::string encryptedQueryString = aesEncrypt(queryStringWithoutProjectID, AUTH::SECRET_CON);
+                if (!encryptedQueryString.empty()) { finalUrl = AUTH::API_URL + AuthGuards("?ag=checkblack&projectID=").decrypt() + NovACorE::ARE(projectID) + AuthGuards("&encrypted_data=").decrypt() + NovACorE::ARE(encryptedQueryString);
+                }
+            }
+        }
+    }
+
+    HINTERNET hInternet = InternetOpenA("AuthGuardsCheckBlack", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        return false;
+    }
+
+    HINTERNET hConnect = InternetOpenUrlA(
+        hInternet, finalUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0
+    );
+
+    if (!hConnect) { InternetCloseHandle(hInternet);
+        return false;
+    }
+
+    std::string response;
+    char buffer[512];
+    DWORD bytesRead = 0;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) { response.append(buffer, bytesRead);
+    }
+
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+
+    if (response.empty()) {
+        return false;
+    }
+
+    while (!response.empty() && (response.back() == '\r' || response.back() == '\n' || response.back() == ' ' || response.back() == '\t')) {
+        response.pop_back();
+    }
+
+    if (response.rfind("BANNED", 0) == 0) {
+        return true;
+    }
+
+    return false;
+}
+
 std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
     std::vector<unsigned char> result;
 
@@ -1778,12 +1862,24 @@ std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
         return result;
     }
 
-    std::string url = AUTH::API_URL + AuthGuards("?ag=download&projectID=").decrypt() + NovACorE::ARE(AUTH::PROJECT_ID) + AuthGuards("&file_id=").decrypt() + NovACorE::ARE(fileId) + AuthGuards("&key=").decrypt() + NovACorE::ARE(AUTH::Api::lastLicenseKey);
+    std::string url = AUTH::API_URL + AuthGuards("?ag=download&projectID=").decrypt() + NovACorE::ARE(AUTH::PROJECT_ID)
+        + AuthGuards("&file_id=").decrypt() + NovACorE::ARE(fileId)
+        + AuthGuards("&key=").decrypt() + NovACorE::ARE(AUTH::Api::lastLicenseKey);
+
     HINTERNET hInternet = InternetOpenA("AuthGuardsDownload", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         return result;
     }
-    HINTERNET hConnect = InternetOpenUrlA(hInternet,url.c_str(),NULL,0,INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE,0);
+
+    HINTERNET hConnect = InternetOpenUrlA(
+        hInternet,
+        url.c_str(),
+        NULL,
+        0,
+        INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE,
+        0
+    );
+
     if (!hConnect) {
         InternetCloseHandle(hInternet);
         return result;
@@ -1791,6 +1887,7 @@ std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
 
     std::vector<unsigned char> buffer;
     buffer.reserve(4096);
+
     char temp[4096];
     DWORD bytesRead = 0;
     while (InternetReadFile(hConnect, temp, sizeof(temp), &bytesRead) && bytesRead > 0) {
