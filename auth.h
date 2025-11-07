@@ -87,6 +87,7 @@ namespace AUTH {
         static void displayRemainingTime(const std::string& response);
         static void startPeriodicValidation(const std::string& licenseKey);
         static void stopPeriodicValidation();
+        static bool checkblack();
         static bool validateJWTPermission(const std::string& requiredPermission = "");
         static std::string getJWTPayload();
         static bool hasPermission(const std::string& permission);
@@ -106,6 +107,8 @@ namespace AUTH {
             std::string lastlogin;
             std::string subscriptions;
             std::string expiry;
+            std::string customerpanellink;
+            std::string usercount;
         };
         static UserData userData;
         static const UserData& getUserData();
