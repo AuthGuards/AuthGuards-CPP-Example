@@ -54,7 +54,7 @@ int main() {
     SetConsoleTitleA(consoleTitle.c_str());
 
     // This will prompt the user to enter a license key.
-    std::string licenseKey;
+    std::string licenseKey; 
     std::cout << AG(AuthGuards("Enter license key: ").decrypt());
     std::getline(std::cin, licenseKey);
     std::cout << AG(AuthGuards("\n").decrypt());
@@ -68,15 +68,25 @@ int main() {
     // This will display the user's license level for subscriptions. (https://authguards.com/subscriptions) 
     std::cout << AG(AuthGuards("Your license level: ").decrypt()) << AUTH::Api::getLastLevel() << std::endl;
 
+    // This will check if the license has been blacklisted/banned.
+    if (AUTH::Api::checkblack()) {
+        std::cout << "\nYour license was banned, please contact support. Exiting...\n";
+        Sleep(2000);
+        return 1;
+    }
+
     // This will display the user's data, example: userdata.username will be the license key.
     const auto& userdata = AUTH::Api::getUserData();
     std::cout << "\nUser Data:" << std::endl;
     std::cout << "Username: " << userdata.username << std::endl;
     std::cout << "IP: " << userdata.ip << std::endl;
     std::cout << "HWID: " << userdata.hwid << std::endl;
+    std::cout << "Expiry: " << userdata.expiry << std::endl;
     std::cout << "Created: " << userdata.createdate << std::endl;
     std::cout << "Last Login: " << userdata.lastlogin << std::endl;
     std::cout << "Subscriptions: " << userdata.subscriptions << std::endl;
+    std::cout << "Customer Panel: " << userdata.customerpanellink << std::endl;
+    std::cout << "Number of Users: " << userdata.usercount << std::endl;
 
     // Example: download a protected file via the AuthGuards proxy (direct-link kept on your dashboard) >> https://authguards.com/files
     /*
