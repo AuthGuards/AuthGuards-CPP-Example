@@ -53,17 +53,99 @@ int main() {
     std::string consoleTitle = AG(AuthGuards("AG - Built at: ").decrypt()) + std::string(__DATE__) + " " + std::string(__TIME__);
     SetConsoleTitleA(consoleTitle.c_str());
 
-    // This will prompt the user to enter a license key.
-    std::string licenseKey; 
-    std::cout << AG(AuthGuards("Enter license key: ").decrypt());
-    std::getline(std::cin, licenseKey);
-    std::cout << AG(AuthGuards("\n").decrypt());
+    std::cout << " Please select an authentication method:\n";
+    std::cout << "-----------------------------------------\n";
+    std::cout << "  [1] License key only\n";
+    std::cout << "  [2] Register account (username/password + license key)\n";
+    std::cout << "  [3] Login with username/password\n";
+    std::cout << "  [4] Reset account password\n";
+    std::cout << "  [5] Change account username\n";
+    std::cout << "-----------------------------------------\n";
+    std::cout << " Enter your choice: ";
+    // this is just for the selection of the menu, you can remove this if you dont want to use it.
+    std::string methodInput;
+    std::getline(std::cin, methodInput);
+    int method = 1;
+    try {
+        if (!methodInput.empty()) {
+            method = std::stoi(methodInput);
+        }
+    }
+    catch (...) {
+        method = 1;
+    }
+    // end of the selection of the menu, you can remove this if you dont want to use it.
+    // this is the main menu options, you can remove this if you dont want to use it, you can copy and paste the options you want to use.
+    switch (method) {
+    case 1: {
+        std::string licenseKey;
+        std::cout << AG(AuthGuards("Enter license key: ").decrypt());
+        std::getline(std::cin, licenseKey);
+        std::cout << AG(AuthGuards("\n").decrypt());
+        AUTH::Api::validateLicense(licenseKey);
+        break;
+    }
+    case 2: {
+        std::string username;
+        std::string password;
+        std::string licenseKey;
 
-    // This will validate the license key.
-    std::string response = AUTH::Api::validateLicense(licenseKey);
-    // This will display the remaining time of the license.
-    AUTH::Api::displayRemainingTime(response);
-    // This will display the user's license level.
+        std::cout << "\nEnter username: ";
+        std::getline(std::cin, username);
+        std::cout << "Enter password: ";
+        std::getline(std::cin, password);
+        std::cout << "Enter license key: ";
+        std::getline(std::cin, licenseKey);
+        std::cout << "\n";
+        AUTH::Api::registerAccount(username, password, licenseKey);
+        break;
+    }
+    case 3: {
+        std::string username;
+        std::string password;
+        std::cout << "\nEnter username: ";
+        std::getline(std::cin, username);
+        std::cout << "Enter password: ";
+        std::getline(std::cin, password);
+        std::cout << "\n";
+        AUTH::Api::validateAccount(username, password);
+        break;
+    }
+    case 4: {
+        std::string username;
+        std::string oldPassword;
+        std::string newPassword;
+        std::cout << "\nEnter username: ";
+        std::getline(std::cin, username);
+        std::cout << "Enter current password: ";
+        std::getline(std::cin, oldPassword);
+        std::cout << "Enter new password: ";
+        std::getline(std::cin, newPassword);
+        std::cout << "\n";
+        AUTH::Api::resetaccount(username, oldPassword, newPassword);
+        break;
+    }
+    case 5: {
+        std::string currentUsername;
+        std::string password;
+        std::string newUsername;
+        std::cout << "\nEnter current username: ";
+        std::getline(std::cin, currentUsername);
+        std::cout << "Enter current password: ";
+        std::getline(std::cin, password);
+        std::cout << "Enter new username: ";
+        std::getline(std::cin, newUsername);
+        std::cout << "\n";
+        AUTH::Api::changeusername(currentUsername, password, newUsername);
+        break;
+    }
+    default: {
+        std::cout << "Not an option. Please select 1 to enter a license key. Exiting..." << std::endl;
+        Sleep(2000);
+        return 1;
+    }
+    }
+
 
     // This will display the user's license level for subscriptions. (https://authguards.com/subscriptions) 
     std::cout << AG(AuthGuards("Your license level: ").decrypt()) << AUTH::Api::getLastLevel() << std::endl;
@@ -79,6 +161,7 @@ int main() {
     const auto& userdata = AUTH::Api::getUserData();
     std::cout << "\nUser Data:" << std::endl;
     std::cout << "Username: " << userdata.username << std::endl;
+    std::cout << "License: " << userdata.license << std::endl;
     std::cout << "IP: " << userdata.ip << std::endl;
     std::cout << "HWID: " << userdata.hwid << std::endl;
     std::cout << "Expiry: " << userdata.expiry << std::endl;
