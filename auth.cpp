@@ -245,6 +245,70 @@ namespace AUTH {
         return result;
     }
 
+    namespace {
+        std::string buildEncryptedUrlForAction(const std::string& action, const std::vector<std::pair<std::string, std::string>>& params) {
+            std::ostringstream urlstream;
+            urlstream << AUTH::API_URL
+                << AuthGuards("?ag=").decrypt() << action
+                << AuthGuards("&").decrypt() << AuthGuards("projectID=").decrypt() << NovACorE::ARE(AUTH::PROJECT_ID);
+
+            for (const auto& param : params) {
+                urlstream << AuthGuards("&").decrypt() << param.first << AuthGuards("=").decrypt() << NovACorE::ARE(param.second);
+            }
+
+            std::string fullUrl = urlstream.str();
+            std::string finalUrl = fullUrl;
+
+            size_t queryPos = fullUrl.find(AuthGuards("?").decrypt());
+            if (queryPos != std::string::npos) {
+                std::string fullQueryString = fullUrl.substr(queryPos + 1);
+                std::string projectIDParam = AuthGuards("projectID=").decrypt();
+                size_t projectIDStart = fullQueryString.find(projectIDParam);
+                std::string projectID = AuthGuards("").decrypt();
+                std::string queryStringWithoutProjectID = fullQueryString;
+
+                if (projectIDStart != std::string::npos) {
+                    size_t projectIDValueStart = projectIDStart + projectIDParam.length();
+                    size_t projectIDEnd = fullQueryString.find(AuthGuards("&").decrypt(), projectIDValueStart);
+                    if (projectIDEnd == std::string::npos) {
+                        projectIDEnd = fullQueryString.length();
+                    }
+                    projectID = fullQueryString.substr(projectIDValueStart, projectIDEnd - projectIDValueStart);
+
+                    std::string beforeProjectID = fullQueryString.substr(0, projectIDStart);
+                    std::string afterProjectID = (projectIDEnd < fullQueryString.length())
+                        ? fullQueryString.substr(projectIDEnd + 1)
+                        : AuthGuards("").decrypt();
+
+                    if (!beforeProjectID.empty() && !afterProjectID.empty()) {
+                        queryStringWithoutProjectID = beforeProjectID + AuthGuards("&").decrypt() + afterProjectID;
+                    }
+                    else if (!beforeProjectID.empty()) {
+                        queryStringWithoutProjectID = beforeProjectID;
+                    }
+                    else if (!afterProjectID.empty()) {
+                        queryStringWithoutProjectID = afterProjectID;
+                    }
+                    else {
+                        queryStringWithoutProjectID = AuthGuards("").decrypt();
+                    }
+                }
+
+                if (!queryStringWithoutProjectID.empty()) {
+                    std::string encryptedQueryString = aesEncrypt(queryStringWithoutProjectID, AUTH::SECRET_CON);
+                    if (!encryptedQueryString.empty()) {
+                        finalUrl = AUTH::API_URL
+                            + AuthGuards("?ag=").decrypt() + action
+                            + AuthGuards("&projectID=").decrypt() + projectID
+                            + AuthGuards("&encrypted_data=").decrypt() + NovACorE::ARE(encryptedQueryString);
+                    }
+                }
+            }
+
+            return finalUrl;
+        }
+    }
+
     // dont use this if not needed delete this if this aint hooked up to this verison i gave you.
     std::string sha256(const std::string& str) {
         HCRYPTPROV hProv = 0;
@@ -1655,13 +1719,14 @@ namespace AUTH {
         }
         if (parts.size() > 6) { lastLevel = parts[6]; }
         if (parts.size() > 7) userData.username = parts[7];
-        if (parts.size() > 8) userData.ip = parts[8];
-        if (parts.size() > 9) userData.hwid = parts[9];
-        if (parts.size() > 10) userData.createdate = parts[10];
-        if (parts.size() > 11) userData.lastlogin = parts[11];
-        if (parts.size() > 12) userData.subscriptions = parts[12];
-        if (parts.size() > 13) userData.customerpanellink = parts[13];
-        if (parts.size() > 14) userData.usercount = parts[14];
+        if (parts.size() > 8) userData.license = parts[8];
+        if (parts.size() > 9) userData.ip = parts[9];
+        if (parts.size() > 10) userData.hwid = parts[10];
+        if (parts.size() > 11) userData.createdate = parts[11];
+        if (parts.size() > 12) userData.lastlogin = parts[12];
+        if (parts.size() > 13) userData.subscriptions = parts[13];
+        if (parts.size() > 14) userData.customerpanellink = parts[14];
+        if (parts.size() > 15) userData.usercount = parts[15];
         if (parts.size() > 2) userData.expiry = parts[2];
         if (!parts.empty()) {
             std::string status = parts[0];
@@ -1774,47 +1839,11 @@ bool AUTH::Api::checkblack() {
         return false;
     }
 
-    std::stringstream urlstream;
-    urlstream << AUTH::API_URL << AuthGuards("?ag=checkblack").decrypt() << AuthGuards("&").decrypt() << AG(AuthGuards("projectID").decrypt()) << AuthGuards("=").decrypt() << NovACorE::ARE(AUTH::PROJECT_ID) << AuthGuards("&").decrypt() << AG(AuthGuards("key").decrypt()) << AuthGuards("=").decrypt() << NovACorE::ARE(lastLicenseKey);
-    std::string fullUrl = urlstream.str();
-    std::string finalUrl = fullUrl;
-    size_t queryPos = fullUrl.find(AuthGuards("?").decrypt());
-    if (queryPos != std::string::npos) {
-        std::string fullQueryString = fullUrl.substr(queryPos + 1);
-        std::string projectIDParam = AuthGuards("projectID=").decrypt();
-        size_t projectIDStart = fullQueryString.find(projectIDParam);
-        std::string projectID = AuthGuards("").decrypt();
-        std::string queryStringWithoutProjectID = fullQueryString;
-        if (projectIDStart != std::string::npos) {
-            size_t projectIDValueStart = projectIDStart + projectIDParam.length();
-            size_t projectIDEnd = fullQueryString.find(AuthGuards("&").decrypt(), projectIDValueStart);
-            if (projectIDEnd == std::string::npos) {
-                projectIDEnd = fullQueryString.length();
-            }
-            projectID = fullQueryString.substr(projectIDValueStart, projectIDEnd - projectIDValueStart);
-            std::string beforeProjectID = fullQueryString.substr(0, projectIDStart);
-            std::string afterProjectID = (projectIDEnd < fullQueryString.length()) ? fullQueryString.substr(projectIDEnd + 1) : AuthGuards("").decrypt();
-            if (!beforeProjectID.empty() && !afterProjectID.empty()) {
-                queryStringWithoutProjectID = beforeProjectID + AuthGuards("&").decrypt() + afterProjectID;
-            }
-            else if (!beforeProjectID.empty()) {
-                queryStringWithoutProjectID = beforeProjectID;
-            }
-            else if (!afterProjectID.empty()) {
-                queryStringWithoutProjectID = afterProjectID;
-            }
-            else {
-                queryStringWithoutProjectID = AuthGuards("").decrypt();
-            }
-            if (!queryStringWithoutProjectID.empty()) {
-                std::string encryptedQueryString = aesEncrypt(queryStringWithoutProjectID, AUTH::SECRET_CON);
-                if (!encryptedQueryString.empty()) { finalUrl = AUTH::API_URL + AuthGuards("?ag=checkblack&projectID=").decrypt() + NovACorE::ARE(projectID) + AuthGuards("&encrypted_data=").decrypt() + NovACorE::ARE(encryptedQueryString);
-                }
-            }
-        }
-    }
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("key").decrypt()), lastLicenseKey);
+    std::string finalUrl = buildEncryptedUrlForAction(AG(AuthGuards("checkblack").decrypt()), params);
 
-    HINTERNET hInternet = InternetOpenA("AuthGuardsCheckBlack", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsCheckBlack").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         return false;
     }
@@ -1844,11 +1873,246 @@ bool AUTH::Api::checkblack() {
         response.pop_back();
     }
 
-    if (response.rfind("BANNED", 0) == 0) {
+    if (response.rfind(AG(AuthGuards("BANNED").decrypt()), 0) == 0) {
         return true;
     }
 
     return false;
+}
+
+namespace {
+    void logAndExit(const std::string& message) {
+        std::cout << message << std::endl;
+        Sleep(2000);
+        exit(1);
+    }
+}
+
+std::string AUTH::Api::registerAccount(const std::string& username, const std::string& password, const std::string& licenseKey) {
+    if (username.empty() || password.empty() || licenseKey.empty()) {
+        logAndExit(AG(AuthGuards("Registration failed: missing parameters.").decrypt()));
+    }
+
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("username").decrypt()), username);
+    params.emplace_back(AG(AuthGuards("password").decrypt()), password);
+    params.emplace_back(AG(AuthGuards("license").decrypt()), licenseKey);
+
+    std::string finalUrl = buildEncryptedUrlForAction(AG(AuthGuards("register_account").decrypt()), params);
+
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsRegisterAccount").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        logAndExit(AG(AuthGuards("Registration failed: unable to initialize network.").decrypt()));
+    }
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, finalUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+    if (!hConnect) {
+        InternetCloseHandle(hInternet);
+        logAndExit(AG(AuthGuards("Registration failed: unable to reach server.").decrypt()));
+    }
+
+    std::string response;
+    char buffer[512];
+    DWORD bytesRead = 0;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        response.append(buffer, bytesRead);
+    }
+
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+
+    if (response.empty()) {
+        logAndExit(AG(AuthGuards("Registration failed: empty response from server.").decrypt()));
+    }
+
+    while (!response.empty() && (response.back() == '\r' || response.back() == '\n' || response.back() == ' ' || response.back() == '\t')) {
+        response.pop_back();
+    }
+
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) {
+        logAndExit(AG(AuthGuards("Registration failed: ").decrypt()) + response);
+    }
+
+    lastLicenseKey = licenseKey;
+    return validateLicense(licenseKey);
+}
+
+std::string AUTH::Api::validateAccount(const std::string& username, const std::string& password) {
+    if (username.empty() || password.empty()) {
+        logAndExit(AG(AuthGuards("Login failed: missing parameters.").decrypt()));
+    }
+
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("username").decrypt()), username);
+    params.emplace_back(AG(AuthGuards("password").decrypt()), password);
+
+    std::string finalUrl = buildEncryptedUrlForAction(AG(AuthGuards("login_account").decrypt()), params);
+
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsLoginAccount").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        logAndExit(AG(AuthGuards("Login failed: unable to initialize network.").decrypt()));
+    }
+
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, finalUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+
+    if (!hConnect) {
+        InternetCloseHandle(hInternet);
+        logAndExit(AG(AuthGuards("Login failed: unable to reach server.").decrypt()));
+    }
+
+    std::string response;
+    char buffer[512];
+    DWORD bytesRead = 0;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        response.append(buffer, bytesRead);
+    }
+
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+
+    if (response.empty()) {
+        logAndExit(AG(AuthGuards("Login failed: empty response from server.").decrypt()));
+    }
+
+    while (!response.empty() && (response.back() == '\r' || response.back() == '\n' || response.back() == ' ' || response.back() == '\t')) {
+        response.pop_back();
+    }
+
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) {
+        logAndExit(AG(AuthGuards("Login failed: ").decrypt()) + response);
+    }
+
+    std::string license = response.substr(3);
+    size_t pipePos = license.find(AuthGuards("|").decrypt());
+    if (pipePos != std::string::npos) {
+        license = license.substr(0, pipePos);
+    }
+
+    if (license.empty()) {
+        logAndExit(AG(AuthGuards("Login failed: license not linked to account.").decrypt()));
+    }
+
+    lastLicenseKey = license;
+    return validateLicense(license);
+}
+
+std::string AUTH::Api::resetaccount(const std::string& username, const std::string& oldPassword, const std::string& newPassword) {
+    if (username.empty() || oldPassword.empty() || newPassword.empty()) {
+        logAndExit(AG(AuthGuards("Password reset failed: missing parameters.").decrypt()));
+    }
+
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("username").decrypt()), username);
+    params.emplace_back(AG(AuthGuards("old_password").decrypt()), oldPassword);
+    params.emplace_back(AG(AuthGuards("new_password").decrypt()), newPassword);
+
+    std::string finalUrl = buildEncryptedUrlForAction(AG(AuthGuards("reset_account_password").decrypt()), params);
+
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsResetPassword").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        logAndExit(AG(AuthGuards("Password reset failed: unable to initialize network.").decrypt()));
+    }
+
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, finalUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+
+    if (!hConnect) {
+        InternetCloseHandle(hInternet);
+        logAndExit(AG(AuthGuards("Password reset failed: unable to reach server.").decrypt()));
+    }
+
+    std::string response;
+    char buffer[512];
+    DWORD bytesRead = 0;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        response.append(buffer, bytesRead);
+    }
+
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+
+    if (response.empty()) {
+        logAndExit(AG(AuthGuards("Password reset failed: empty response from server.").decrypt()));
+    }
+
+    while (!response.empty() && (response.back() == '\r' || response.back() == '\n' || response.back() == ' ' || response.back() == '\t')) {
+        response.pop_back();
+    }
+
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) {
+        logAndExit(AG(AuthGuards("Password reset failed: ").decrypt()) + response);
+    }
+
+    std::string license = response.substr(3);
+    size_t pipePos = license.find(AuthGuards("|").decrypt());
+    if (pipePos != std::string::npos) {
+        license = license.substr(0, pipePos);
+    }
+
+    if (license.empty()) {
+        logAndExit(AG(AuthGuards("Password reset failed: license not associated with account.").decrypt()));
+    }
+
+    lastLicenseKey = license;
+    return validateLicense(license);
+}
+
+std::string AUTH::Api::changeusername(const std::string& currentUsername, const std::string& password, const std::string& newUsername) {
+    if (currentUsername.empty() || password.empty() || newUsername.empty()) {
+        logAndExit(AG(AuthGuards("Username change failed: missing parameters.").decrypt()));
+    }
+
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("current_username").decrypt()), currentUsername);
+    params.emplace_back(AG(AuthGuards("password").decrypt()), password);
+    params.emplace_back(AG(AuthGuards("new_username").decrypt()), newUsername);
+
+    std::string finalUrl = buildEncryptedUrlForAction(AG(AuthGuards("change_account_username").decrypt()), params);
+
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsChangeUsername").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        logAndExit(AG(AuthGuards("Username change failed: unable to initialize network.").decrypt()));
+    }
+
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, finalUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
+
+    if (!hConnect) {
+        InternetCloseHandle(hInternet);
+        logAndExit(AG(AuthGuards("Username change failed: unable to reach server.").decrypt()));
+    }
+
+    std::string response;
+    char buffer[512];
+    DWORD bytesRead = 0;
+    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        response.append(buffer, bytesRead);
+    }
+
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+
+    if (response.empty()) {
+        logAndExit(AG(AuthGuards("Username change failed: empty response from server.").decrypt()));
+    }
+
+    while (!response.empty() && (response.back() == '\r' || response.back() == '\n' || response.back() == ' ' || response.back() == '\t')) {
+        response.pop_back();
+    }
+
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) {
+        logAndExit(AG(AuthGuards("Username change failed: ").decrypt()) + response);
+    }
+
+    std::string license = response.substr(3);
+    size_t pipePos = license.find(AuthGuards("|").decrypt());
+    if (pipePos != std::string::npos) {
+        license = license.substr(0, pipePos);
+    }
+
+    if (license.empty()) {
+        logAndExit(AG(AuthGuards("Username change failed: license not associated with account.").decrypt()));
+    }
+
+    lastLicenseKey = license;
+    return validateLicense(license);
 }
 
 std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
@@ -1862,23 +2126,14 @@ std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
         return result;
     }
 
-    std::string url = AUTH::API_URL + AuthGuards("?ag=download&projectID=").decrypt() + NovACorE::ARE(AUTH::PROJECT_ID)
-        + AuthGuards("&file_id=").decrypt() + NovACorE::ARE(fileId)
-        + AuthGuards("&key=").decrypt() + NovACorE::ARE(AUTH::Api::lastLicenseKey);
+    std::string url = AUTH::API_URL + AuthGuards("?ag=download&projectID=").decrypt() + NovACorE::ARE(AUTH::PROJECT_ID) + AuthGuards("&file_id=").decrypt() + NovACorE::ARE(fileId) + AuthGuards("&key=").decrypt() + NovACorE::ARE(AUTH::Api::lastLicenseKey);
 
-    HINTERNET hInternet = InternetOpenA("AuthGuardsDownload", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsDownload").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) {
         return result;
     }
 
-    HINTERNET hConnect = InternetOpenUrlA(
-        hInternet,
-        url.c_str(),
-        NULL,
-        0,
-        INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE,
-        0
-    );
+    HINTERNET hConnect = InternetOpenUrlA(hInternet, url.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
 
     if (!hConnect) {
         InternetCloseHandle(hInternet);
@@ -1906,11 +2161,7 @@ std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
         return c < 0x09 || (c > 0x0D && c < 0x20);
     });
 
-    if (!preview.empty() && !hasControlChars) {
-        if (preview.rfind("ERROR|", 0) == 0 || preview.rfind("BANNED", 0) == 0 || preview.rfind("NOT_FOUND", 0) == 0 || preview.rfind("EXPIRED", 0) == 0) {
-            return result;
-        }
-    }
+    if (!preview.empty() && !hasControlChars && (preview.rfind(AG(AuthGuards("ERROR|").decrypt()), 0) == 0 || preview.rfind(AG(AuthGuards("BANNED").decrypt()), 0) == 0 || preview.rfind(AG(AuthGuards("NOT_FOUND").decrypt()), 0) == 0 || preview.rfind(AG(AuthGuards("EXPIRED").decrypt()), 0) == 0)) return result;
 
     result.swap(buffer);
     return result;
@@ -1921,15 +2172,15 @@ std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
             return false;
         }
 
-        std::cout << AG(AuthGuards("Downloading update...").decrypt()) << std::endl;
+    std::cout << AG(AuthGuards("Downloading update...").decrypt()) << std::endl;
         char exePath[MAX_PATH];
         GetModuleFileNameA(NULL, exePath, MAX_PATH);
         std::string exePathStr(exePath);
         size_t lastBackslash = exePathStr.find_last_of("\\");
         std::string exeDir = (lastBackslash != std::string::npos) ? exePathStr.substr(0, lastBackslash + 1) : "";
 
-        std::string filename = "update.exe";
-        size_t lastSlash = updateUrl.find_last_of("/\\");
+    std::string filename = AG(AuthGuards("update.exe").decrypt());
+    size_t lastSlash = updateUrl.find_last_of(AG(AuthGuards("/\\").decrypt()));
         if (lastSlash != std::string::npos && lastSlash < updateUrl.length() - 1) {
             filename = updateUrl.substr(lastSlash + 1);
             size_t questionMark = filename.find('?');
@@ -1945,8 +2196,8 @@ std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
             return false;
         }
 
-        std::cout << AG(AuthGuards("Download completed. Launching update...").decrypt()) << std::endl;
-        if (ShellExecuteA(NULL, "runas", downloadPath.c_str(), NULL, NULL, SW_SHOWNORMAL) > (HINSTANCE)32) {
+    std::cout << AG(AuthGuards("Download completed. Launching update...").decrypt()) << std::endl;
+    if (ShellExecuteA(NULL, AG(AuthGuards("runas").decrypt()).c_str(), downloadPath.c_str(), NULL, NULL, SW_SHOWNORMAL) > (HINSTANCE)32) {
             Sleep(2000);
             return true;
         }
