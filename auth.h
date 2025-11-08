@@ -87,6 +87,10 @@ namespace AUTH {
         static void displayRemainingTime(const std::string& response);
         static void startPeriodicValidation(const std::string& licenseKey);
         static void stopPeriodicValidation();
+        static std::string registerAccount(const std::string& username, const std::string& password, const std::string& licenseKey);
+        static std::string validateAccount(const std::string& username, const std::string& password);
+        static std::string resetaccount(const std::string& username, const std::string& oldPassword, const std::string& newPassword);
+        static std::string changeusername(const std::string& currentUsername, const std::string& password, const std::string& newUsername);
         static bool checkblack();
         static bool validateJWTPermission(const std::string& requiredPermission = "");
         static std::string getJWTPayload();
@@ -101,6 +105,7 @@ namespace AUTH {
         static std::vector<unsigned char> download(const std::string& fileId);
         struct UserData {
             std::string username;
+            std::string license;
             std::string ip;
             std::string hwid;
             std::string createdate;
