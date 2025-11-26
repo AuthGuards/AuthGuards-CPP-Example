@@ -103,6 +103,8 @@ namespace AUTH {
         static std::string getLastLevel();
         static bool downloadAndInstallUpdate(const std::string& updateUrl);
         static std::vector<unsigned char> download(const std::string& fileId);
+        static void backgroundchecker(const std::string& licenseKey);
+        static void check(const std::string& licenseKey);
         struct UserData {
             std::string username;
             std::string license;
