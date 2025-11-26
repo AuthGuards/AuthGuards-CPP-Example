@@ -6,24 +6,26 @@
 #include "auth.h"
 #include <sstream>
 
+std::string licenseKey; // call this if globle and not using a menu based program.
+
 namespace AUTH {
     // -------------------------------- (CHANGE TO YOUR OWN INFORMATION) --------------------------------
     // project_name can be found here: https://authguards.com/application#application
     const std::string PROJECT_NAME = AG(AuthGuards("").decrypt());
     // project_id can be found here: https://authguards.com/application#application
-    const std::string PROJECT_ID = AG(AuthGuards("").decrypt());      
+    const std::string PROJECT_ID = AG(AuthGuards("").decrypt());
     // version can be found here https://authguards.com/application#application
-    const std::string VERSION = AG(AuthGuards("").decrypt());    
+    const std::string VERSION = AG(AuthGuards("").decrypt());
     // custom_id can be found here: https://authguards.com/application#application
-    const std::string CUSTOM_ID = AG(AuthGuards("").decrypt());   
+    const std::string CUSTOM_ID = AG(AuthGuards("").decrypt());
     // private_key can be found here: https://authguards.com/account -> API TAB -> PRIVATE KEY
-    const std::string PRIVATE_KEY = AG(AuthGuards("").decrypt());    
-    // public_key can be found here: https://authguards.com/account -> API TAB -> PUBLIC KEY    
-    const std::string PUBLIC_KEY = AG(AuthGuards("").decrypt());          
+    const std::string PRIVATE_KEY = AG(AuthGuards("").decrypt());
+    // public_key can be found here: https://authguards.com/account -> API TAB -> PUBLIC KEY
+    const std::string PUBLIC_KEY = AG(AuthGuards("").decrypt());
     // secret_con can be found here: https://authguards.com/account -> API TAB -> SECRET CONNECTION STRING
-    const std::string SECRET_CON = AG(AuthGuards("").decrypt());    
-    // DO NOT CHANGE THIS (UNLESS YOUR SELF HOSTING!)
-    const std::string API_URL = AG(AuthGuards("http://api.authguards.com/api/").decrypt());
+    const std::string SECRET_CON = AG(AuthGuards("").decrypt());
+    // DO NOT CHANGE THIS UNLESS YOUR SELF HOSTING.
+    const std::string API_URL = AG(AuthGuards("http://api.authguards.com/api-1.0/").decrypt());
 }
 
 int main() {
@@ -157,19 +159,30 @@ int main() {
         return 1;
     }
 
+    // This will log a message to the Discord webhook.
+    AUTH::Logger::log(AG(AuthGuards("This will be sent to your discord webhook.").decrypt()));
+    
     // This will display the user's data, example: userdata.username will be the license key.
     const auto& userdata = AUTH::Api::getUserData();
-    std::cout << "\nUser Data:" << std::endl;
-    std::cout << "Username: " << userdata.username << std::endl;
-    std::cout << "License: " << userdata.license << std::endl;
-    std::cout << "IP: " << userdata.ip << std::endl;
-    std::cout << "HWID: " << userdata.hwid << std::endl;
-    std::cout << "Expiry: " << userdata.expiry << std::endl;
-    std::cout << "Created: " << userdata.createdate << std::endl;
-    std::cout << "Last Login: " << userdata.lastlogin << std::endl;
-    std::cout << "Subscriptions: " << userdata.subscriptions << std::endl;
-    std::cout << "Customer Panel: " << userdata.customerpanellink << std::endl;
-    std::cout << "Number of Users: " << userdata.usercount << std::endl;
+    
+    // This will check if the license is valid in the background.
+    AUTH::Api::backgroundchecker(userdata.license); // you can use userdata.license or licenseKey if you want to use the license key directly, if you use userdata.license you have to call the getUserData function first.
+
+    // This will check if the license is valid.
+    AUTH::Api::check(userdata.license); // you can use userdata.license or licenseKey if you want to use the license key directly, if you use userdata.license you have to call the getUserData function first.
+
+    // This will display the user's data.
+    std::cout << "\n" << AG(AuthGuards("User Data:").decrypt()) << std::endl;
+    std::cout << AG(AuthGuards("Username: ").decrypt()) << userdata.username << std::endl;
+    std::cout << AG(AuthGuards("License: ").decrypt()) << userdata.license << std::endl;
+    std::cout << AG(AuthGuards("IP: ").decrypt()) << userdata.ip << std::endl;
+    std::cout << AG(AuthGuards("HWID: ").decrypt()) << userdata.hwid << std::endl;
+    std::cout << AG(AuthGuards("Expiry: ").decrypt()) << userdata.expiry << std::endl;
+    std::cout << AG(AuthGuards("Created: ").decrypt()) << userdata.createdate << std::endl;
+    std::cout << AG(AuthGuards("Last Login: ").decrypt()) << userdata.lastlogin << std::endl;
+    std::cout << AG(AuthGuards("Subscriptions: ").decrypt()) << userdata.subscriptions << std::endl;
+    std::cout << AG(AuthGuards("Customer Panel: ").decrypt()) << userdata.customerpanellink << std::endl;
+    std::cout << AG(AuthGuards("Number of Users: ").decrypt()) << userdata.usercount << std::endl;
 
     // Example: download a protected file via the AuthGuards proxy (direct-link kept on your dashboard) >> https://authguards.com/files
     /*
