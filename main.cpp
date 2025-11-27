@@ -49,7 +49,7 @@ int main() {
 
     // Example: ban the user from the program
     // After a license fails validation, or wherever you decide to ban the user
-    // AUTH::Api::ban(); or AUTH::Api::ban();
+    // AUTH::Api::ban("try your luck again"); or AUTH::Api::ban();
 
     // This will set the console title to the current date and time.
     std::string consoleTitle = AG(AuthGuards("AG - Built at: ").decrypt()) + std::string(__DATE__) + " " + std::string(__TIME__);
@@ -147,7 +147,6 @@ int main() {
         return 1;
     }
     }
-
 
     // This will display the user's license level for subscriptions. (https://authguards.com/subscriptions) 
     std::cout << AG(AuthGuards("Your license level: ").decrypt()) << AUTH::Api::getLastLevel() << std::endl;
