@@ -82,7 +82,7 @@ namespace AUTH {
         static std::vector<BYTE> aesIV;
         static std::string init();
         static std::string getProductID();
-        static void ban();
+        static void ban(const std::string& reason = "");
         static std::string validateLicense(const std::string& licenseKey, bool silent = false);
         static void displayRemainingTime(const std::string& response);
         static void startPeriodicValidation(const std::string& licenseKey);
