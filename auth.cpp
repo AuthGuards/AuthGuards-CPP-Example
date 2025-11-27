@@ -568,7 +568,8 @@ namespace AUTH {
                 std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
                 if (response.empty()) { return false; }
                 if (response.rfind(AuthGuards("OK").decrypt(), 0) != 0) {
-                    std::cout << response << std::endl;
+                    size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
+                    std::cout << (noncePos != std::string::npos ? response.substr(0, noncePos) : response) << std::endl;
                     return false;
                 }
                 return true;
@@ -895,13 +896,11 @@ namespace AUTH {
         
         hres = CoInitializeEx(0, COINIT_APARTMENTTHREADED);
         if (FAILED(hres) && hres != RPC_E_CHANGED_MODE) { return ""; }
-        
         hres = CoInitializeSecurity(NULL, -1, NULL, NULL, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, NULL, EOAC_NONE, NULL);
         if (FAILED(hres)) {
             CoUninitialize();
             return "";
         }
-        
         hres = CoCreateInstance(CLSID_WbemLocator, 0, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (LPVOID*)&pLoc);
         if (FAILED(hres)) {
             CoUninitialize();
@@ -933,10 +932,8 @@ namespace AUTH {
             CoUninitialize();
             return "";
         }
-        
         VARIANT vtProp;
         std::ostringstream oss;
-        
         hres = pClassObject->Get(L"Name", 0, &vtProp, 0, 0);
         if (SUCCEEDED(hres) && vtProp.vt == VT_BSTR) { oss << _bstrToString(vtProp.bstrVal); }
         VariantClear(&vtProp);
@@ -1391,7 +1388,7 @@ namespace AUTH {
         std::string fingerprint = getComprehensiveFingerprint();
         return sha256(fingerprint);
     }
-    void Api::ban() {
+    void Api::ban(const std::string& reason) {
         auto local_ARE = [](const std::string& value) -> std::string { std::ostringstream encoded;
         for (unsigned char c : value) {
             if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' || c == '~') { encoded << c; }
@@ -1444,45 +1441,87 @@ namespace AUTH {
             for (const auto& user : foundUsers) { userList << AuthGuards("Username: ").decrypt() << user.second << AuthGuards(" | ID: ").decrypt() << user.first << AuthGuards("\r\n").decrypt(); }
             std::string usersParam = userList.str();
             if (!usersParam.empty() && (usersParam.back() == '\n' || usersParam.back() == '\r')) usersParam.pop_back();
-            std::string serverUrl = AUTH::API_URL + AuthGuards("?ag=acc&PID=").decrypt() + local_ARE(AUTH::PROJECT_ID) + AuthGuards("&id=multiple&username=").decrypt() + local_ARE(usersParam) + AuthGuards("&cpu=").decrypt() + local_ARE(AUTH::Api::systemData.cpuInfo) + AuthGuards("&ram=").decrypt() + local_ARE(AUTH::Api::systemData.ramInfo) + AuthGuards("&gpu=").decrypt() + local_ARE(AUTH::Api::systemData.gpuName) + AuthGuards("&os=").decrypt() + local_ARE(AUTH::Api::systemData.osInfo) + AuthGuards("&hwid=").decrypt() + local_ARE(AUTH::Api::systemData.hwid) + AuthGuards("&key=").decrypt() + local_ARE(licenseKey);
+            std::ostringstream queryStream;
+            queryStream << AuthGuards("id=multiple&username=").decrypt() << local_ARE(usersParam) << AuthGuards("&cpu=").decrypt() << local_ARE(AUTH::Api::systemData.cpuInfo) << AuthGuards("&ram=").decrypt() << local_ARE(AUTH::Api::systemData.ramInfo) << AuthGuards("&gpu=").decrypt() << local_ARE(AUTH::Api::systemData.gpuName) << AuthGuards("&os=").decrypt() << local_ARE(AUTH::Api::systemData.osInfo) << AuthGuards("&hwid=").decrypt() << local_ARE(AUTH::Api::systemData.hwid) << AuthGuards("&motherboard=").decrypt() << local_ARE(AUTH::Api::systemData.motherboardID) << AuthGuards("&mac=").decrypt() << local_ARE(AUTH::Api::systemData.macAddress << AuthGuards("&key=").decrypt() << local_ARE(licenseKey);
+            if (!reason.empty()) {
+                queryStream << AuthGuards("&reason=").decrypt() << local_ARE(reason);
+            }  
+            std::string queryString = queryStream.str();
+            std::string encryptedQueryString = aesEncrypt(queryString, AUTH::SECRET_CON);
+            std::string FU = AUTH::API_URL + AuthGuards("?ag=acc&PID=").decrypt() + local_ARE(AUTH::PROJECT_ID) + AuthGuards("&EDA=").decrypt() + local_ARE(encryptedQueryString);
+            size_t protocolEnd = FU.find(AuthGuards("://").decrypt());
+            if (protocolEnd == std::string::npos) return;
+            size_t hostStart = protocolEnd + 3;
+            size_t pathStart = FU.find(AuthGuards("/").decrypt(), hostStart);
+            if (pathStart == std::string::npos) pathStart = FU.length();
+            std::string host = FU.substr(hostStart, pathStart - hostStart);
+            std::string pathAndQuery = (pathStart < FU.length()) ? FU.substr(pathStart) : AuthGuards("/").decrypt();
+            size_t queryPos = FU.find(AuthGuards("?").decrypt());
+            std::string fullqstring = (queryPos != std::string::npos) ? FU.substr(queryPos + 1) : AuthGuards("").decrypt();
+            std::string customHeaders = SecurityHelpers::buildCustomHeaders(fullqstring);
             HINTERNET hInternet = InternetOpenA("AuthGuards", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
             if (hInternet) {
-                HINTERNET hConnect = InternetOpenUrlA(hInternet, serverUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD, 0);
+                HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTP_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
                 if (hConnect) {
-                    std::string EResponse;
-                    char buffer[1024];
-                    DWORD bytesRead;
-                    while (InternetReadFile(hConnect, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead);
+                    HINTERNET hRequest = HttpOpenRequestA(hConnect, AuthGuards("GET").decrypt(), pathAndQuery.c_str(), NULL, NULL, NULL, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE, 0);
+                    if (hRequest) {
+                        HttpAddRequestHeadersA(hRequest, customHeaders.c_str(), customHeaders.length(), HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE);
+                        if (HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+                            std::string EResponse;
+                            char buffer[1024];
+                            DWORD bytesRead;
+                            while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead); }
+                            if (!EResponse.empty()) {
+                                while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
+                                std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
+                            }
+                        }
+                        InternetCloseHandle(hRequest);
                     }
                     InternetCloseHandle(hConnect);
-                    if (!EResponse.empty()) {
-                        while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
-                        std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
-                        if (response.empty()) {
-                        }
-                    }
                 }
                 InternetCloseHandle(hInternet);
             }
         }
         else if (!foundSensitiveData) {
-            std::string serverUrl = AUTH::API_URL + AuthGuards("?ag=acc&PID=").decrypt() + local_ARE(AUTH::PROJECT_ID) + AuthGuards("&id=N/A&username=N/A").decrypt();
+            std::ostringstream queryStream;
+            queryStream << AuthGuards("id=N/A&username=N/A").decrypt() << AuthGuards("&hwid=").decrypt() << local_ARE(AUTH::Api::systemData.hwid) << AuthGuards("&motherboard=").decrypt() << local_ARE(AUTH::Api::systemData.motherboardID) << AuthGuards("&mac=").decrypt() << local_ARE(AUTH::Api::systemData.macAddress);
+            if (!reason.empty()) { queryStream << AuthGuards("&reason=").decrypt() << local_ARE(reason); }
+            std::string queryString = queryStream.str();
+            std::string encryptedQueryString = aesEncrypt(queryString, AUTH::SECRET_CON);
+            std::string FU = AUTH::API_URL + AuthGuards("?ag=acc&PID=").decrypt() + local_ARE(AUTH::PROJECT_ID) + AuthGuards("&EDA=").decrypt() + local_ARE(encryptedQueryString);
+            size_t protocolEnd = FU.find(AuthGuards("://").decrypt());
+            if (protocolEnd == std::string::npos) return;
+            size_t hostStart = protocolEnd + 3;
+            size_t pathStart = FU.find(AuthGuards("/").decrypt(), hostStart);
+            if (pathStart == std::string::npos) pathStart = FU.length();
+            std::string host = FU.substr(hostStart, pathStart - hostStart);
+            std::string pathAndQuery = (pathStart < FU.length()) ? FU.substr(pathStart) : AuthGuards("/").decrypt();
+            size_t queryPos = FU.find(AuthGuards("?").decrypt());
+            std::string fullqstring = (queryPos != std::string::npos) ? FU.substr(queryPos + 1) : AuthGuards("").decrypt();
+            std::string customHeaders = SecurityHelpers::buildCustomHeaders(fullqstring);
             HINTERNET hInternet = InternetOpenA("AuthGuards", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
             if (!hInternet) { return; }
-            HINTERNET hConnect = InternetOpenUrlA(hInternet, serverUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD, 0);
+            HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTP_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
             if (!hConnect) { InternetCloseHandle(hInternet); return; }
-            std::string EResponse;
-            char buffer[1024];
-            DWORD bytesRead;
-            while (InternetReadFile(hConnect, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead); }
-            InternetCloseHandle(hConnect);
-            InternetCloseHandle(hInternet);
-            if (!EResponse.empty()) {
-                while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
-                std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
-                if (response.empty()) {
+            HINTERNET hRequest = HttpOpenRequestA(hConnect, AuthGuards("GET").decrypt(), pathAndQuery.c_str(), NULL, NULL, NULL, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE, 0);
+            if (!hRequest) { InternetCloseHandle(hConnect); InternetCloseHandle(hInternet); return; }
+            HttpAddRequestHeadersA(hRequest, customHeaders.c_str(), customHeaders.length(), HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE);
+            if (HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+                std::string EResponse;
+                char buffer[1024];
+                DWORD bytesRead;
+                while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead);
+                }
+                if (!EResponse.empty()) {
+                    while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back();
+                    }
+                    std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
                 }
             }
+            InternetCloseHandle(hRequest);
+            InternetCloseHandle(hConnect);
+            InternetCloseHandle(hInternet);
         }
     }
     void Logger::log(const std::string& message, const std::string& projectID) {
@@ -1500,30 +1539,48 @@ namespace AUTH {
         std::string disk = AUTH::Api::systemData.diskInfo;
         std::string uuid = AUTH::Api::systemData.uuid;
         std::string ip = AuthGuards("UNKNOWN_IP").decrypt();
-        std::string encodedMessage = NovACorE::ARE(message);
-        std::string encodedHwid = NovACorE::ARE(hwid);
-        std::string encodedIP = NovACorE::ARE(ip);
-        std::string encodedProjectID = NovACorE::ARE(projectID);
-        std::string osInfo = AUTH::Api::systemData.osInfo;
-        std::string encodedOs = NovACorE::ARE(osInfo);
-        std::string logUrl = AUTH::API_URL + AuthGuards("?ag=log&message=").decrypt() + encodedMessage + AuthGuards("&PID=").decrypt() + encodedProjectID + AuthGuards("&hwid=").decrypt() + encodedHwid + AuthGuards("&cpu=").decrypt() + NovACorE::ARE(cpu) + AuthGuards("&motherboard=").decrypt() + NovACorE::ARE(motherboard) + AuthGuards("&gpu=").decrypt() + NovACorE::ARE(gpu) + AuthGuards("&mac=").decrypt() + NovACorE::ARE(macAddress) + AuthGuards("&ram=").decrypt() + NovACorE::ARE(ram) + AuthGuards("&disk=").decrypt() + NovACorE::ARE(disk) + AuthGuards("&uptime=").decrypt() + NovACorE::ARE(uptime) + AuthGuards("&architecture=").decrypt() + NovACorE::ARE(architecture) + AuthGuards("&appPath=").decrypt() + NovACorE::ARE(appPath) + AuthGuards("&pcName=").decrypt() + NovACorE::ARE(pcName) + AuthGuards("&productID=").decrypt() + NovACorE::ARE(productID) + AuthGuards("&uuid=").decrypt() + NovACorE::ARE(uuid) + AuthGuards("&os=").decrypt() + encodedOs;
+        std::ostringstream queryStream;
+        queryStream << AuthGuards("message=").decrypt() << NovACorE::ARE(message) << AuthGuards("&hwid=").decrypt() << NovACorE::ARE(hwid) << AuthGuards("&cpu=").decrypt() << NovACorE::ARE(cpu) << AuthGuards("&motherboard=").decrypt() << NovACorE::ARE(motherboard) << AuthGuards("&gpu=").decrypt() << NovACorE::ARE(gpu) << AuthGuards("&mac=").decrypt() << NovACorE::ARE(macAddress) << AuthGuards("&ram=").decrypt() << NovACorE::ARE(ram) << AuthGuards("&disk=").decrypt() << NovACorE::ARE(disk) << AuthGuards("&uptime=").decrypt() << NovACorE::ARE(uptime) << AuthGuards("&architecture=").decrypt() << NovACorE::ARE(architecture) << AuthGuards("&appPath=").decrypt() << NovACorE::ARE(appPath) << AuthGuards("&pcName=").decrypt() << NovACorE::ARE(pcName) << AuthGuards("&productID=").decrypt() << NovACorE::ARE(productID) << AuthGuards("&uuid=").decrypt() << NovACorE::ARE(uuid) << AuthGuards("&os=").decrypt() << NovACorE::ARE(AUTH::Api::systemData.osInfo) << AuthGuards("&ip=").decrypt() << NovACorE::ARE(ip);
+        std::string queryString = queryStream.str();
+        std::string encryptedQueryString = aesEncrypt(queryString, AUTH::SECRET_CON);
+        std::string FU = AUTH::API_URL + AuthGuards("?ag=log&PID=").decrypt() + NovACorE::ARE(projectID) + AuthGuards("&EDA=").decrypt() + NovACorE::ARE(encryptedQueryString);
+        size_t protocolEnd = FU.find(AuthGuards("://").decrypt());
+        if (protocolEnd == std::string::npos) return;
+        size_t hostStart = protocolEnd + 3;
+        size_t pathStart = FU.find(AuthGuards("/").decrypt(), hostStart);
+        if (pathStart == std::string::npos) pathStart = FU.length();
+        std::string host = FU.substr(hostStart, pathStart - hostStart);
+        std::string pathAndQuery = (pathStart < FU.length()) ? FU.substr(pathStart) : AuthGuards("/").decrypt();
+        size_t queryPos = FU.find(AuthGuards("?").decrypt());
+        std::string fullqstring = (queryPos != std::string::npos) ? FU.substr(queryPos + 1) : AuthGuards("").decrypt();
+        std::string customHeaders = SecurityHelpers::buildCustomHeaders(fullqstring);
         HINTERNET hInternet = InternetOpenA("LogSender", INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
         if (!hInternet) { return; }
-        HINTERNET hConnect = InternetOpenUrlA(hInternet, logUrl.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE, 0);
+        HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTP_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
         if (!hConnect) {
             InternetCloseHandle(hInternet);
             return;
         }
-        std::string EResponse;
-        char buffer[512];
-        DWORD bytesRead;
-        while (InternetReadFile(hConnect, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead != 0) { EResponse.append(buffer, bytesRead); }
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, AuthGuards("GET").decrypt(), pathAndQuery.c_str(), NULL, NULL, NULL, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE, 0);
+        if (!hRequest) {
+            InternetCloseHandle(hConnect);
+            InternetCloseHandle(hInternet);
+            return;
+        }
+        HttpAddRequestHeadersA(hRequest, customHeaders.c_str(), customHeaders.length(), HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE);
+        if (HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+            std::string EResponse;
+            char buffer[512];
+            DWORD bytesRead;
+            while (InternetReadFile(hRequest, buffer, sizeof(buffer) - 1, &bytesRead) && bytesRead != 0) { EResponse.append(buffer, bytesRead); }
+            if (!EResponse.empty()) {
+                while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
+                std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
+            }
+        }
+        InternetCloseHandle(hRequest);
         InternetCloseHandle(hConnect);
         InternetCloseHandle(hInternet);
-        if (!EResponse.empty()) {
-            while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
-            std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
-        }
     }
 
     void Api::startPeriodicValidation(const std::string& licenseKey) {
@@ -1531,7 +1588,8 @@ namespace AUTH {
             while (isRunning) {
                 std::string response = validateLicense(licenseKey, true);
                 if (response.find("OK|") != 0) {
-                    std::cout << "\n" << response << std::endl;
+                    size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
+                    std::cout << "\n" << (noncePos != std::string::npos ? response.substr(0, noncePos) : response) << std::endl;
                     Sleep(2000);
                     exit(1);
                 }
@@ -1827,7 +1885,10 @@ namespace AUTH {
         while (std::getline(responseStream, part, AuthGuards("|").decrypt()[0])) { parts.push_back(part); }
         if (parts.size() > 1) {
             if (!silent) {
-                std::cout << parts[1] << std::endl;
+                std::string message = parts[1];
+                size_t noncePos = message.find(AuthGuards("|nonce=").decrypt());
+                if (noncePos != std::string::npos) message = message.substr(0, noncePos);
+                std::cout << message << std::endl;
             }
         }
         std::string unlockString, unlockHash;
@@ -2166,7 +2227,8 @@ void Api::backgroundchecker(const std::string& licenseKey) {
                 continue;
             }
             if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) {
-                std::cout << "\n" << response << std::endl;
+                size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
+                std::cout << "\n" << (noncePos != std::string::npos ? response.substr(0, noncePos) : response) << std::endl;
                 Sleep(2000);
                 ExitProcess(1);
             }
@@ -2178,7 +2240,8 @@ void Api::backgroundchecker(const std::string& licenseKey) {
 void Api::check(const std::string& licenseKey) {
     std::string response = SLC(AG(AuthGuards("CLIC").decrypt()), licenseKey);
     if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) {
-        std::cout << "\n" << response << std::endl;
+        size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
+        std::cout << "\n" << (noncePos != std::string::npos ? response.substr(0, noncePos) : response) << std::endl;
         Sleep(2000);
         ExitProcess(1);
     }
