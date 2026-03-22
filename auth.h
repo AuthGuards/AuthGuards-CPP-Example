@@ -91,6 +91,7 @@ namespace AUTH {
         static std::string validateAccount(const std::string& username, const std::string& password);
         static std::string resetaccount(const std::string& username, const std::string& oldPassword, const std::string& newPassword);
         static std::string changeusername(const std::string& currentUsername, const std::string& password, const std::string& newUsername);
+        static std::string applyUpgradeKey(const std::string& username, const std::string& password, const std::string& upgradeKey);
         static bool checkblack();
         static bool validateJWTPermission(const std::string& requiredPermission = "");
         static std::string getJWTPayload();
@@ -103,6 +104,7 @@ namespace AUTH {
         static std::string getLastLevel();
         static bool downloadAndInstallUpdate(const std::string& updateUrl);
         static std::vector<unsigned char> download(const std::string& fileId);
+        static std::string msg(const std::string& fieldId);
         static void backgroundchecker(const std::string& licenseKey);
         static void check(const std::string& licenseKey);
         struct UserData {
