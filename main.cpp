@@ -194,7 +194,14 @@ int main() {
         outFile.close();
     }
     */
+    
+    //Support for custom messages can be used for rebrands or anything like that...
+    //https://authguards.com/application/messages
+    //std::string custommsg = AUTH::Api::msg("YOUR_ID");
+    //std::cout << custommsg << std::endl << std::flush;
 
+
+    
     // This is an example of how to use the license level subscriptions and display the menu based on the license level.
     // -----------------------------------------------------------------------------------------------------------------
     // .. Simply remove the /* and */ to use the example below.
