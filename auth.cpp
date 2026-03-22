@@ -194,7 +194,6 @@ namespace SecurityHelpers {
         std::string pathAndQuery = (pathStart < url.length()) ? url.substr(pathStart) : AuthGuards("/").decrypt();
         size_t queryStart = pathAndQuery.find(AuthGuards("?").decrypt());
         std::string queryString = (queryStart != std::string::npos) ? pathAndQuery.substr(queryStart + 1) : AuthGuards("").decrypt();
-        std::string path = (queryStart != std::string::npos) ? pathAndQuery.substr(0, queryStart) : pathAndQuery;
         std::string customHeaders = buildCustomHeaders(queryString);
         HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTP_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
         if (!hConnect) return NULL;
@@ -211,6 +210,40 @@ namespace SecurityHelpers {
         }
         InternetCloseHandle(hConnect);
         return hRequest;
+    }
+    std::string httpGetWithHeaders(HINTERNET hInternet, const std::string& url, DWORD flags = INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE) {
+        std::string result;
+        std::string urlLower = url;
+        std::transform(urlLower.begin(), urlLower.end(), urlLower.begin(), ::tolower);
+        size_t protocolEnd = urlLower.find(AuthGuards("://").decrypt());
+        if (protocolEnd == std::string::npos) return result;
+        size_t hostStart = protocolEnd + 3;
+        size_t pathStart = url.find(AuthGuards("/").decrypt(), hostStart);
+        if (pathStart == std::string::npos) pathStart = url.length();
+        std::string host = url.substr(hostStart, pathStart - hostStart);
+        std::string pathAndQuery = (pathStart < url.length()) ? url.substr(pathStart) : AuthGuards("/").decrypt();
+        size_t queryStart = pathAndQuery.find(AuthGuards("?").decrypt());
+        std::string queryString = (queryStart != std::string::npos) ? pathAndQuery.substr(queryStart + 1) : AuthGuards("").decrypt();
+        std::string customHeaders = buildCustomHeaders(queryString);
+        HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTP_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+        if (!hConnect) return result;
+        HINTERNET hRequest = HttpOpenRequestA(hConnect, AuthGuards("GET").decrypt(), pathAndQuery.c_str(), NULL, NULL, NULL, flags, 0);
+        if (!hRequest) {
+            InternetCloseHandle(hConnect);
+            return result;
+        }
+        HttpAddRequestHeadersA(hRequest, customHeaders.c_str(), customHeaders.length(), HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE);
+        if (!HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+            InternetCloseHandle(hRequest);
+            InternetCloseHandle(hConnect);
+            return result;
+        }
+        char buffer[512];
+        DWORD bytesRead = 0;
+        while (InternetReadFile(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) { result.append(buffer, bytesRead); }
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
+        return result;
     }
 }
 
@@ -390,6 +423,31 @@ namespace AUTH {
             }
 
             return FU;
+        }
+
+        std::string base64DecodeMsgPayload(const std::string& input) {
+            if (input.empty()) {
+                return AuthGuards("").decrypt();
+            }
+            const std::string base64_chars = AuthGuards("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/").decrypt();
+            std::vector<BYTE> out;
+            int val = 0, valb = -8;
+            for (char c : input) {
+                if (c == AuthGuards("=").decrypt()[0]) {
+                    break;
+                }
+                size_t pos = base64_chars.find(c);
+                if (pos == std::string::npos) {
+                    continue;
+                }
+                val = (val << 6) + (int)pos;
+                valb += 6;
+                if (valb >= 0) {
+                    out.push_back((BYTE)((val >> valb) & 0xFF));
+                    valb -= 8;
+                }
+            }
+            return std::string(out.begin(), out.end());
         }
     }
     std::string getRoamingPath() {
@@ -2032,6 +2090,16 @@ namespace {
         Sleep(2000);
         exit(1);
     }
+    std::string stripNonceFromResponse(const std::string& response) {
+        std::string needle = AG(AuthGuards("|nonce=").decrypt());
+        size_t pos = response.find(needle);
+        std::string msg = (pos != std::string::npos) ? response.substr(0, pos) : response;
+        std::string bannedPref = AG(AuthGuards("BANNED|").decrypt());
+        if (msg.size() > bannedPref.size() && msg.compare(0, bannedPref.size(), bannedPref) == 0) {
+            msg = msg.substr(bannedPref.size());
+        }
+        return msg;
+    }
 }
 
 std::string AUTH::Api::registerAccount(const std::string& username, const std::string& password, const std::string& licenseKey) {
@@ -2044,23 +2112,14 @@ std::string AUTH::Api::registerAccount(const std::string& username, const std::s
     HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsRegisterAccount").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) { logandexit(AG(AuthGuards("Registration failed: unable to initialize network.").decrypt()));
     }
-    HINTERNET hConnect = InternetOpenUrlA(hInternet, FU.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    if (!hConnect) {
-        InternetCloseHandle(hInternet);
-        logandexit(AG(AuthGuards("Registration failed: unable to reach server.").decrypt()));
-    }
-    std::string EResponse;
-    char buffer[512];
-    DWORD bytesRead = 0;
-    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead); }
-    InternetCloseHandle(hConnect);
+    std::string EResponse = SecurityHelpers::httpGetWithHeaders(hInternet, FU, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE);
     InternetCloseHandle(hInternet);
     if (EResponse.empty()) { logandexit(AG(AuthGuards("Registration failed: empty response from server.").decrypt())); }
     while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
     std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
     if (response.empty()) { exit(1); }
     if (response.length() < 2) { logandexit(AG(AuthGuards("Response is invalid or corrupted.").decrypt())); }
-    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Registration failed: ").decrypt()) + response); }
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Registration failed: ").decrypt()) + stripNonceFromResponse(response)); }
     lastLicenseKey = licenseKey;
     return validateLicense(licenseKey);
 }
@@ -2073,23 +2132,14 @@ std::string AUTH::Api::validateAccount(const std::string& username, const std::s
     std::string FU = beuforaction(AG(AuthGuards("login_account").decrypt()), params);
     HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsLoginAccount").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) { logandexit(AG(AuthGuards("Login failed: unable to initialize network.").decrypt())); }
-    HINTERNET hConnect = InternetOpenUrlA(hInternet, FU.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    if (!hConnect) {
-        InternetCloseHandle(hInternet);
-        logandexit(AG(AuthGuards("Login failed: unable to reach server.").decrypt()));
-    }
-    std::string EResponse;
-    char buffer[512];
-    DWORD bytesRead = 0;
-    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead); }
-    InternetCloseHandle(hConnect);
+    std::string EResponse = SecurityHelpers::httpGetWithHeaders(hInternet, FU, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE);
     InternetCloseHandle(hInternet);
     if (EResponse.empty()) { logandexit(AG(AuthGuards("Login failed: empty response from server.").decrypt())); }
     while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
     std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
     if (response.empty()) { exit(1); }
     if (response.length() < 2) { logandexit(AG(AuthGuards("Response is invalid or corrupted.").decrypt())); }
-    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Login failed: ").decrypt()) + response); }
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Login failed: ").decrypt()) + stripNonceFromResponse(response)); }
     std::string license = response.substr(3);
     size_t pipePos = license.find(AuthGuards("|").decrypt());
     if (pipePos != std::string::npos) { license = license.substr(0, pipePos); }
@@ -2107,23 +2157,14 @@ std::string AUTH::Api::resetaccount(const std::string& username, const std::stri
     std::string FU = beuforaction(AG(AuthGuards("reset_account_password").decrypt()), params);
     HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsResetPassword").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) { logandexit(AG(AuthGuards("Password reset failed: unable to initialize network.").decrypt())); }
-    HINTERNET hConnect = InternetOpenUrlA(hInternet, FU.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    if (!hConnect) {
-        InternetCloseHandle(hInternet);
-        logandexit(AG(AuthGuards("Password reset failed: unable to reach server.").decrypt()));
-    }
-    std::string EResponse;
-    char buffer[512];
-    DWORD bytesRead = 0;
-    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead); }
-    InternetCloseHandle(hConnect);
+    std::string EResponse = SecurityHelpers::httpGetWithHeaders(hInternet, FU, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE);
     InternetCloseHandle(hInternet);
     if (EResponse.empty()) { logandexit(AG(AuthGuards("Password reset failed: empty response from server.").decrypt())); }
     while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
     std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
     if (response.empty()) { exit(1); }
     if (response.length() < 2) { logandexit(AG(AuthGuards("Response is invalid or corrupted.").decrypt())); }
-    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Password reset failed: ").decrypt()) + response); }
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Password reset failed: ").decrypt()) + stripNonceFromResponse(response)); }
     std::string license = response.substr(3);
     size_t pipePos = license.find(AuthGuards("|").decrypt());
     if (pipePos != std::string::npos) { license = license.substr(0, pipePos); }
@@ -2141,23 +2182,14 @@ std::string AUTH::Api::changeusername(const std::string& currentUsername, const 
     std::string FU = beuforaction(AG(AuthGuards("change_account_username").decrypt()), params);
     HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsChangeUsername").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
     if (!hInternet) { logandexit(AG(AuthGuards("Username change failed: unable to initialize network.").decrypt())); }
-    HINTERNET hConnect = InternetOpenUrlA(hInternet, FU.c_str(), NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE, 0);
-    if (!hConnect) {
-        InternetCloseHandle(hInternet);
-        logandexit(AG(AuthGuards("Username change failed: unable to reach server.").decrypt()));
-    }
-    std::string EResponse;
-    char buffer[512];
-    DWORD bytesRead = 0;
-    while (InternetReadFile(hConnect, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) { EResponse.append(buffer, bytesRead); }
-    InternetCloseHandle(hConnect);
+    std::string EResponse = SecurityHelpers::httpGetWithHeaders(hInternet, FU, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE);
     InternetCloseHandle(hInternet);
     if (EResponse.empty()) { logandexit(AG(AuthGuards("Username change failed: empty response from server.").decrypt())); }
     while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
     std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
     if (response.empty()) { exit(1); }
     if (response.length() < 2) { logandexit(AG(AuthGuards("Response is invalid or corrupted.").decrypt())); }
-    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Username change failed: ").decrypt()) + response); }
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Username change failed: ").decrypt()) + stripNonceFromResponse(response)); }
     std::string license = response.substr(3);
     size_t pipePos = license.find(AuthGuards("|").decrypt());
     if (pipePos != std::string::npos) { license = license.substr(0, pipePos); }
@@ -2165,6 +2197,186 @@ std::string AUTH::Api::changeusername(const std::string& currentUsername, const 
     lastLicenseKey = license;
     return validateLicense(license);
 }
+
+std::string AUTH::Api::applyUpgradeKey(const std::string& username, const std::string& password, const std::string& upgradeKey) {
+    if (username.empty() || password.empty() || upgradeKey.empty()) { logandexit(AG(AuthGuards("Stack failed: missing parameters. Enter username, password, and upgrade key.").decrypt())); }
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("username").decrypt()), username);
+    params.emplace_back(AG(AuthGuards("password").decrypt()), password);
+    params.emplace_back(AG(AuthGuards("upgrade_key").decrypt()), upgradeKey);
+    std::string FU = beuforaction(AG(AuthGuards("stack_license").decrypt()), params);
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsStackLicense").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) { logandexit(AG(AuthGuards("Stack failed: unable to initialize network.").decrypt())); }
+    std::string EResponse = SecurityHelpers::httpGetWithHeaders(hInternet, FU, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE | INTERNET_FLAG_NO_CACHE_WRITE);
+    InternetCloseHandle(hInternet);
+    if (EResponse.empty()) { logandexit(AG(AuthGuards("Stack failed: empty response from server.").decrypt())); }
+    while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) { EResponse.pop_back(); }
+    std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
+    if (response.empty()) { exit(1); }
+    if (response.length() < 2) { logandexit(AG(AuthGuards("Response is invalid or corrupted.").decrypt())); }
+    if (response.rfind(AuthGuards("OK|").decrypt(), 0) != 0) { logandexit(AG(AuthGuards("Stack failed: ").decrypt()) + stripNonceFromResponse(response)); }
+    std::string license = response.substr(3);
+    size_t pipePos = license.find(AuthGuards("|").decrypt());
+    std::string SMG;
+    if (pipePos != std::string::npos) {
+        size_t msgStart = license.find(AuthGuards("|").decrypt(), pipePos + 1);
+        if (msgStart != std::string::npos && msgStart + 1 < license.length()) {
+            SMG = license.substr(msgStart + 1);
+        }
+        license = license.substr(0, pipePos);
+    }
+    if (license.empty()) { logandexit(AG(AuthGuards("Stack failed: no license returned.").decrypt())); }
+    if (!SMG.empty()) {
+        std::cout << stripNonceFromResponse(SMG) << std::endl;
+        Sleep(3000);
+        system(AG(AuthGuards("cls").decrypt()).c_str());
+    }
+    lastLicenseKey = license;
+    return validateLicense(license);
+}
+
+std::string SLC(const std::string& action, const std::string& licenseKey);
+
+std::string AUTH::Api::msg(const std::string& fieldId) {
+    if (fieldId.empty()) {
+        return AuthGuards("").decrypt();
+    }
+    if (!lastLicenseKey.empty()) {
+        std::string clicResp = SLC(AG(AuthGuards("CLIC").decrypt()), lastLicenseKey);
+        const std::string okPref = AuthGuards("OK|").decrypt();
+        if (clicResp.rfind(okPref, 0) != 0) {
+            return AuthGuards("").decrypt();
+        }
+    }
+    std::vector<std::pair<std::string, std::string>> params;
+    params.emplace_back(AG(AuthGuards("msg_id").decrypt()), fieldId);
+    if (!lastLicenseKey.empty()) {
+        params.emplace_back(AG(AuthGuards("key").decrypt()), lastLicenseKey);
+    }
+    std::random_device rdMsg;
+    std::mt19937 genMsg(rdMsg());
+    std::uniform_int_distribution<> disMsg(10000000, 99999999);
+    std::string msgAg = AG(AuthGuards("0x385727487486562545059265637856347865836859635673675692").decrypt()) + std::to_string(disMsg(genMsg));
+    std::string FU = beuforaction(msgAg, params);
+    HINTERNET hInternet = InternetOpenA(AG(AuthGuards("AuthGuardsMsg").decrypt()).c_str(), INTERNET_OPEN_TYPE_DIRECT, NULL, NULL, 0);
+    if (!hInternet) {
+        return AuthGuards("").decrypt();
+    }
+    size_t queryPos = FU.find(AuthGuards("?").decrypt());
+    std::string queryString = (queryPos != std::string::npos) ? FU.substr(queryPos + 1) : AuthGuards("").decrypt();
+    std::string urlLower = FU;
+    std::transform(urlLower.begin(), urlLower.end(), urlLower.begin(), ::tolower);
+    size_t protocolEnd = urlLower.find(AuthGuards("://").decrypt());
+    if (protocolEnd == std::string::npos) {
+        InternetCloseHandle(hInternet);
+        return AuthGuards("").decrypt();
+    }
+    size_t hostStart = protocolEnd + 3;
+    size_t pathStart = FU.find(AuthGuards("/").decrypt(), hostStart);
+    if (pathStart == std::string::npos) {
+        pathStart = FU.length();
+    }
+    std::string host = FU.substr(hostStart, pathStart - hostStart);
+    std::string pathAndQuery = (pathStart < FU.length()) ? FU.substr(pathStart) : AuthGuards("/").decrypt();
+    std::string customHeaders = SecurityHelpers::buildCustomHeaders(queryString);
+    HINTERNET hConnect = InternetConnectA(hInternet, host.c_str(), INTERNET_DEFAULT_HTTP_PORT, NULL, NULL, INTERNET_SERVICE_HTTP, 0, 0);
+    if (!hConnect) {
+        InternetCloseHandle(hInternet);
+        return AuthGuards("").decrypt();
+    }
+    HINTERNET hRequest = HttpOpenRequestA(hConnect, AuthGuards("GET").decrypt(), pathAndQuery.c_str(), NULL, NULL, NULL, INTERNET_FLAG_RELOAD | INTERNET_FLAG_DONT_CACHE, 0);
+    if (!hRequest) {
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hInternet);
+        return AuthGuards("").decrypt();
+    }
+    HttpAddRequestHeadersA(hRequest, customHeaders.c_str(), customHeaders.length(), HTTP_ADDREQ_FLAG_ADD | HTTP_ADDREQ_FLAG_REPLACE);
+    if (!HttpSendRequestA(hRequest, NULL, 0, NULL, 0)) {
+        InternetCloseHandle(hRequest);
+        InternetCloseHandle(hConnect);
+        InternetCloseHandle(hInternet);
+        return AuthGuards("").decrypt();
+    }
+    std::string EResponse;
+    char buffer[4096];
+    DWORD bytesRead = 0;
+    while (InternetReadFile(hRequest, buffer, sizeof(buffer), &bytesRead) && bytesRead > 0) {
+        EResponse.append(buffer, bytesRead);
+    }
+    InternetCloseHandle(hRequest);
+    InternetCloseHandle(hConnect);
+    InternetCloseHandle(hInternet);
+    if (EResponse.empty()) {
+        return AuthGuards("").decrypt();
+    }
+    while (!EResponse.empty() && (EResponse.back() == '\r' || EResponse.back() == '\n' || EResponse.back() == ' ' || EResponse.back() == '\t')) {
+        EResponse.pop_back();
+    }
+    std::string response = aesDecrypt(EResponse, AUTH::SECRET_CON);
+    if (response.empty()) {
+        return AuthGuards("").decrypt();
+    }
+    size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
+    if (noncePos != std::string::npos) {
+        response = response.substr(0, noncePos);
+    }
+    const std::string errLicReq = AuthGuards("ERROR|LICENSE_REQUIRED").decrypt();
+    if (response.rfind(errLicReq, 0) == 0) {
+        std::string hint;
+        if (response.size() > errLicReq.size() && response[errLicReq.size()] == '|') {
+            hint = base64DecodeMsgPayload(response.substr(errLicReq.size() + 1));
+        }
+        if (hint.empty()) {
+            hint = AuthGuards("License required.").decrypt();
+        }
+        std::thread([]() {
+            Sleep(3000u);
+            __fastfail(7u);
+        }).detach();
+        return hint;
+    }
+    const std::string errP = AuthGuards("ERROR|").decrypt();
+    const std::string bannedP = AuthGuards("BANNED").decrypt();
+    const std::string expP = AuthGuards("EXPIRED").decrypt();
+    if (response.rfind(errP, 0) == 0 || response.rfind(bannedP, 0) == 0 || response.rfind(expP, 0) == 0) {
+        return AuthGuards("").decrypt();
+    }
+    const std::string okMsgAuth = AuthGuards("OK|MSG|AUTH|").decrypt();
+    if (response.rfind(okMsgAuth, 0) == 0) {
+        std::string rest = response.substr(okMsgAuth.length());
+        int sec = 180;
+        const size_t pipe = rest.find('|');
+        if (pipe != std::string::npos) {
+            const std::string secPart = rest.substr(0, pipe);
+            if (!secPart.empty()) {
+                try {
+                    sec = std::stoi(secPart);
+                } catch (...) {
+                    sec = 180;
+                }
+                if (sec < 0) {
+                    sec = 180;
+                }
+                if (sec > 86400) {
+                    sec = 86400;
+                }
+            }
+            rest = rest.substr(pipe + 1);
+        }
+        std::string decoded = base64DecodeMsgPayload(rest);
+        std::thread([sec]() {
+            Sleep(static_cast<DWORD>(sec) * 1000u);
+            __fastfail(7u);
+        }).detach();
+        return decoded;
+    }
+    const std::string okMsg = AuthGuards("OK|MSG|").decrypt();
+    if (response.rfind(okMsg, 0) != 0) {
+        return AuthGuards("").decrypt();
+    }
+    return base64DecodeMsgPayload(response.substr(okMsg.length()));
+}
+
 std::string SLC(const std::string& action, const std::string& licenseKey) {
     std::vector<std::pair<std::string, std::string>> params;
     params.emplace_back(AG(AuthGuards("key").decrypt()), licenseKey);
