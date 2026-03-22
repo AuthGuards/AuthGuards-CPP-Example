@@ -62,6 +62,7 @@ int main() {
     std::cout << "  [3] Login with username/password\n";
     std::cout << "  [4] Reset account password\n";
     std::cout << "  [5] Change account username\n";
+    std::cout << "  [6] Add time (stack/upgrade key)\n";
     std::cout << "-----------------------------------------\n";
     std::cout << " Enter your choice: ";
     // this is just for the selection of the menu, you can remove this if you dont want to use it.
@@ -139,6 +140,20 @@ int main() {
         std::getline(std::cin, newUsername);
         std::cout << "\n";
         AUTH::Api::changeusername(currentUsername, password, newUsername);
+        break;
+    }
+    case 6: {
+        std::string username;
+        std::string password;
+        std::string upgradeKey;
+        std::cout << "\nEnter username: ";
+        std::getline(std::cin, username);
+        std::cout << "Enter password: ";
+        std::getline(std::cin, password);
+        std::cout << "Enter upgrade key (to add time to your account): ";
+        std::getline(std::cin, upgradeKey);
+        std::cout << "\n";
+        AUTH::Api::applyUpgradeKey(username, password, upgradeKey);
         break;
     }
     default: {
