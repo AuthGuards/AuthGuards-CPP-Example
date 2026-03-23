@@ -49,7 +49,6 @@ namespace std
 inline const char* akc_to_lpcstr(const std::string& s) { return s.c_str(); }
 inline const char* akc_to_lpcstr(const char* s) { return s; }
 
-/** Securely wipes then clears a string. Call when done with sensitive data from decrypt(). */
 inline void akc_secure_clear(std::string& s)
 {
 	if (!s.empty())
@@ -64,7 +63,6 @@ inline void akc_secure_clear(std::string& s)
 	}
 }
 
-/** Securely wipes a buffer. Use when done with sensitive data. */
 inline void akc_secure_clear(void* p, size_t n)
 {
 	if (p && n)
@@ -78,7 +76,6 @@ inline void akc_secure_clear(void* p, size_t n)
 	}
 }
 
-/** Locks string in RAM to prevent paging to disk. Call before use, unlock when done. */
 inline bool akc_lock_string_in_memory(std::string& s)
 {
 #if defined(_WIN32) && !defined(_KERNEL_MODE)
@@ -89,7 +86,6 @@ inline bool akc_lock_string_in_memory(std::string& s)
 #endif
 }
 
-/** Unlocks string from RAM. Must match prior akc_lock_string_in_memory call. */
 inline void akc_unlock_string_from_memory(std::string& s)
 {
 #if defined(_WIN32) && !defined(_KERNEL_MODE)
