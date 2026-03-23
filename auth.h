@@ -70,7 +70,7 @@ namespace AUTH {
             std::string productID;
             std::string hwid;
             std::string comprehensiveFingerprint;
-        };        
+        };
         static SystemData systemData;
         static std::string project_id;
         static std::atomic<bool> isRunning;
