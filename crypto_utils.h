@@ -17,6 +17,7 @@ namespace CRYPTO_UTILS {
     class AntiReverse {
     public:
         static bool isDebuggerPresent();
+        static bool isSecurityToolPresent();
         static bool isVirtualMachine();
         static void antiDump();
         static void checkIntegrity();
