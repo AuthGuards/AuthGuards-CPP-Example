@@ -37,17 +37,17 @@ namespace SECURITY_INIT {
     static bool performSecurityChecks() {
         if (CRYPTO_UTILS::AntiReverse::isDebuggerPresent()) {
             Sleep(2000);
-            //ExitProcess(1);
+            //__fastfail(0);
         }
         if (CRYPTO_UTILS::AntiReverse::isVirtualMachine()) {
             Sleep(2000);
-            ExitProcess(1);
+            __fastfail(0);
         }
         CRYPTO_UTILS::AntiReverse::checkIntegrity();
         CRYPTO_UTILS::AntiReverse::antiDump();
         if (CRYPTO_UTILS::MemoryProtection::detectMemoryPatching()) {
             Sleep(2000);
-            ExitProcess(1);
+            __fastfail(0);
         }
         return true;
     }
@@ -2529,7 +2529,7 @@ namespace AUTH {
                     size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
                     std::cout << "\n" << (noncePos != std::string::npos ? response.substr(0, noncePos) : response) << std::endl;
                     Sleep(2000);
-                    ExitProcess(1);
+                    __fastfail(0);
                 }
                 Sleep(7000);
             }
@@ -2542,7 +2542,7 @@ namespace AUTH {
             size_t noncePos = response.find(AuthGuards("|nonce=").decrypt());
             std::cout << "\n" << (noncePos != std::string::npos ? response.substr(0, noncePos) : response) << std::endl;
             Sleep(2000);
-            ExitProcess(1);
+            __fastfail(0);
         }
     }
     std::vector<unsigned char> AUTH::Api::download(const std::string& fileId) {
