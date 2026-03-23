@@ -5,6 +5,7 @@
 #include <tlhelp32.h>
 #include <winternl.h>
 #include <cmath>
+#include <algorithm>
 
 namespace CRYPTO_UTILS {
     HCRYPTPROV StaticRSA::hProv = 0;
@@ -13,19 +14,54 @@ namespace CRYPTO_UTILS {
     std::uniform_int_distribution<int> StringObfuscator::dist(1, 255);
     bool AntiReverse::isDebuggerPresent() {
         if (::IsDebuggerPresent()) return true;
+        BOOL remoteDebugger = FALSE;
+        if (CheckRemoteDebuggerPresent(GetCurrentProcess(), &remoteDebugger) && remoteDebugger) return true;
+        #if defined(AUTH_STRICT_SECURITY)
+        if (isSecurityToolPresent()) return true;
+        #endif
         PEB* peb = (PEB*)__readgsqword(0x60);
         if (peb && peb->BeingDebugged) return true;
         PVOID heap = GetProcessHeap();
-        DWORD flags = *(PDWORD)((PBYTE)heap + 0x40);
-        DWORD forceFlags = *(PDWORD)((PBYTE)heap + 0x44);
-        if ((flags & ~HEAP_GROWABLE) || (forceFlags != 0)) return true;
+        if (heap) {
+            __try {
+                DWORD flags = *(PDWORD)((PBYTE)heap + 0x40);
+                DWORD forceFlags = *(PDWORD)((PBYTE)heap + 0x44);
+                if ((flags & ~HEAP_GROWABLE) || (forceFlags != 0)) return true;
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return true; }
+        }
         LARGE_INTEGER start, end, freq;
         QueryPerformanceFrequency(&freq);
         QueryPerformanceCounter(&start);
         Sleep(10);
         QueryPerformanceCounter(&end);
         double elapsed = (double)(end.QuadPart - start.QuadPart) / freq.QuadPart * 1000;
-        if (elapsed > 50.0) return true; // Likely being debugged
+        if (elapsed > 500.0) return true;
+        return false;
+    }
+
+    bool AntiReverse::isSecurityToolPresent() {
+        std::vector<std::wstring> tools = {
+            L"fiddler.exe", L"wireshark.exe", L"procexp", L"procmon", L"x64dbg.exe",
+            L"x32dbg.exe", L"idaq.exe", L"idaq64.exe", L"ollydbg.exe", L"HttpDebuggerPro",
+            L"charles.exe", L"mitmproxy", L"burpsuite", L"postman"
+        };
+        HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (hSnapshot == INVALID_HANDLE_VALUE) return false;
+        PROCESSENTRY32W pe32 = { sizeof(pe32) };
+        if (Process32FirstW(hSnapshot, &pe32)) {
+            do {
+                std::wstring name = pe32.szExeFile;
+                std::transform(name.begin(), name.end(), name.begin(), ::towlower);
+                for (const auto& t : tools) {
+                    if (name.find(t) != std::wstring::npos) {
+                        CloseHandle(hSnapshot);
+                        return true;
+                    }
+                }
+            } while (Process32NextW(hSnapshot, &pe32));
+        }
+        CloseHandle(hSnapshot);
         return false;
     }
 
@@ -43,9 +79,8 @@ namespace CRYPTO_UTILS {
 
         if (Process32First(hSnapshot, &pe32)) {
             do {
-                // Convert WCHAR to std::string can use string
                 std::wstring wProcessName = pe32.szExeFile;
-                std::string processName(wProcessName.begin(), wProcessName.end());       
+                std::string processName(wProcessName.begin(), wProcessName.end());
                 for (const auto& vmProc : vmProcesses) {
                     if (processName == vmProc) {
                         CloseHandle(hSnapshot);
