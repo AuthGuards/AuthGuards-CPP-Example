@@ -9,13 +9,13 @@
 std::string licensekey;
 
 namespace AUTH {
-    const std::string PROJECT_NAME = AG(AuthGuards("ferg").decrypt());
-    const std::string PROJECT_ID = AG(AuthGuards("175bf658032fb94a973369b80e5856cbc7503a683b5f3f30d43451d333be3ba3").decrypt());
-    const std::string VERSION = AG(AuthGuards("1.0.0.0").decrypt());
-    const std::string CUSTOM_ID = AG(AuthGuards("tAdq9ql0I7").decrypt());
-    const std::string PRIVATE_KEY = AG(AuthGuards("ec406dc018b5bb8a6d2d1d6ffc84a70a9f7f275cae17c4301dc80f7b00a3b0c67850f0deb9d42d109f227be53c0b567e").decrypt());
-    const std::string PUBLIC_KEY = AG(AuthGuards("ef20e38e69104eba38f7826817a11e1f94fc78df0efc2b55c3437bbf353c7dde").decrypt());
-    const std::string SECRET_CON = AG(AuthGuards("uab15tEbZjXQoXrqwlt712E/IoaUbf2dIavvF01gVFQAjBxZtDHdyKLwReBjyxu8ZJnAVVoNOnefx3SAqXA3aJjhmXhOOzdJz8QlyS0bm8P2YfJqZGSOiF/vumSSEPA15VPvbKPx3AVTb/UaaFI/iePiIlCoTnfI/LZttcnaazu4xOYFsp+KRipWIUIsi7TxifwE+qkDixbJXcdrQSJXscFGQF5EHg62cGn2kMwq86vsyKYFSmrvhHxbFFavq8m8").decrypt());
+    const std::string PROJECT_NAME = AG(AuthGuards("").decrypt());
+    const std::string PROJECT_ID = AG(AuthGuards("").decrypt());
+    const std::string VERSION = AG(AuthGuards("").decrypt());
+    const std::string CUSTOM_ID = AG(AuthGuards("").decrypt());
+    const std::string PRIVATE_KEY = AG(AuthGuards("").decrypt());
+    const std::string PUBLIC_KEY = AG(AuthGuards("").decrypt());
+    const std::string SECRET_CON = AG(AuthGuards("").decrypt());
     const std::string API_URL = AG(AuthGuards("https://api.authguards.net/api-1.0/").decrypt());
 }
 
